@@ -47,6 +47,8 @@ controller = SimplePIController(0.05, 0.001)
 set_speed = 10
 controller.set_desired(set_speed)
 
+def preprocess(img):
+        hsv_img = cv2.cvtColor(img, cv2.COLOR_BGR2HSV).astype(float)
 
 @sio.on('telemetry')
 def telemetry(sid, data):
@@ -61,6 +63,7 @@ def telemetry(sid, data):
         imgString = data["image"]
         image = Image.open(BytesIO(base64.b64decode(imgString)))
         image_array = np.asarray(image)
+        image_array = preprocess(image_array)
         steering_angle = float(model.predict(image_array[None, :, :, :], batch_size=1))
 
         throttle = controller.update(float(speed))
