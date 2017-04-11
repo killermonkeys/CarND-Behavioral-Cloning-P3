@@ -4,7 +4,8 @@ import numpy as np
 
 #hyperparameters
 sidecamcorrection = 0.4
-epochs = 7
+epochs = 8
+test_size = 0.3
 
 #data path info
 data_path = 'alldata/'
@@ -28,12 +29,21 @@ with open(data_path + 'driving_log.csv') as csvfile:
 
 
 from sklearn.model_selection import train_test_split
-train_samples, validation_samples = train_test_split(driving_log, test_size=0.2)
+train_samples, validation_samples = train_test_split(driving_log, test_size=0.3)
 
 import cv2
 import numpy as np
 import sklearn
 from sklearn.utils import shuffle
+
+def normalizedHsv(img):
+    hsv_img = cv2.cvtColor(img, cv2.COLOR_BGR2HSV).astype(float)
+    #H is 0 - 180
+    #hsv_img[0] = hsv_img[0] /180.0 - 0.5
+    # rest are 0-255
+    #hsv_img[1] = hsv_img[1] / 255.0 - 0.5
+    #hsv_img[2] = hsv_img[2] / 255.0 - 0.5
+    return hsv_img
 
 def generator(samples, batch_size=32):
     num_samples = len(samples)
@@ -55,7 +65,11 @@ def generator(samples, batch_size=32):
                 #clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8,8))
                 #lab_image[0] = clahe.apply(lab_image[0])
                 #image = cv2.cvtColor(image, cv2.COLOR_LAB2BGR)
-                images.append(image)
+                
+                hsvimg = normalizedHsv(image)
+                #print("i 0- ", image[0].min(), "0+ ", image[0].max(), "1- ", image[1].min(), "1+ ", image[1].max(), "2- ", image[2].min(), "2+ ", image[2].max())
+                #print("h 0- ", hsvimg[0].min(), "0+ ", hsvimg[0].max(), "1- ", hsvimg[1].min(), "1+ ", hsvimg[1].max(), "2- ", hsvimg[2].min(), "2+ ", hsvimg[2].max())
+                images.append(hsvimg)
 
                 measurement = float(batch_sample[1])
                 measurements.append(measurement)
