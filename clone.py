@@ -4,7 +4,7 @@ import numpy as np
 
 #hyperparameters
 sidecamcorrection = 0.4
-epochs = 8
+epochs = 10
 test_size = 0.3
 
 #data path info
@@ -29,7 +29,7 @@ with open(data_path + 'driving_log.csv') as csvfile:
 
 
 from sklearn.model_selection import train_test_split
-train_samples, validation_samples = train_test_split(driving_log, test_size=0.3)
+train_samples, validation_samples = train_test_split(driving_log, test_size=test_size)
 
 import cv2
 import numpy as np
@@ -66,10 +66,10 @@ def generator(samples, batch_size=32):
                 #lab_image[0] = clahe.apply(lab_image[0])
                 #image = cv2.cvtColor(image, cv2.COLOR_LAB2BGR)
                 
-                hsvimg = normalizedHsv(image)
+                #hsvimg = normalizedHsv(image)
                 #print("i 0- ", image[0].min(), "0+ ", image[0].max(), "1- ", image[1].min(), "1+ ", image[1].max(), "2- ", image[2].min(), "2+ ", image[2].max())
                 #print("h 0- ", hsvimg[0].min(), "0+ ", hsvimg[0].max(), "1- ", hsvimg[1].min(), "1+ ", hsvimg[1].max(), "2- ", hsvimg[2].min(), "2+ ", hsvimg[2].max())
-                images.append(hsvimg)
+                images.append(image)
 
                 measurement = float(batch_sample[1])
                 measurements.append(measurement)
@@ -88,6 +88,7 @@ validation_generator = generator(validation_samples, batch_size=32)
 from keras.models import Sequential
 from keras.layers import Flatten, Dense, Lambda, Cropping2D, Dropout
 from keras.layers import Conv2D, MaxPooling2D
+from keras.callbacks import ModelCheckpoint
 
 model = Sequential()
 
@@ -119,11 +120,16 @@ model.add(Dense(1000, activation='relu'))
 model.add(Dropout(0.5))
 model.add(Dense(1))
 
+# checkpoint
+filepath="~/CarND-Behavioral-Cloning-P3/weights-{epoch:02d}-{val_loss:.2f}.h5"
+checkpoint = ModelCheckpoint(filepath, monitor='val_loss', verbose=1, mode='min')
+callbacks_list = [checkpoint]
 
 model.compile(loss='mse', optimizer='adam')
 model.fit_generator(train_generator, samples_per_epoch= 
             len(train_samples), validation_data=validation_generator, 
-            nb_val_samples=len(validation_samples), nb_epoch=epochs)
+            nb_val_samples=len(validation_samples), nb_epoch=epochs,
+            callbacks=callbacks_list)
 
 model.save('model.h5')
 
