@@ -3,6 +3,8 @@ import base64
 from datetime import datetime
 import os
 import shutil
+import math
+import random
 
 import numpy as np
 import socketio
@@ -15,6 +17,7 @@ from io import BytesIO
 from keras.models import load_model
 import h5py
 from keras import __version__ as keras_version
+import cv2
 
 sio = socketio.Server()
 app = Flask(__name__)
@@ -43,10 +46,13 @@ class SimplePIController:
         return self.Kp * self.error + self.Ki * self.integral
 
 
-controller = SimplePIController(0.1, 0.002)
-set_speed = 9
+controller = SimplePIController(0.07, 0.005)
+set_speed = 10
 controller.set_desired(set_speed)
 
+def preprocess(img):
+        hsv_img = cv2.cvtColor(img, cv2.COLOR_BGR2HSV).astype(float)
+        return hsv_img
 
 @sio.on('telemetry')
 def telemetry(sid, data):
@@ -61,11 +67,20 @@ def telemetry(sid, data):
         imgString = data["image"]
         image = Image.open(BytesIO(base64.b64decode(imgString)))
         image_array = np.asarray(image)
+        #image_array = preprocess(image_array)
         steering_angle = float(model.predict(image_array[None, :, :, :], batch_size=1))
+        
+        # work around bug in simulator where the car can get stuck, the "fix" is to apply brakes again
+        if float(speed) < 0.2 and random.randint(0,4) == 0:
+            # this basically gives a 1/5 chance of applying brakes if speed is already 0... sometimes initially will cause brake but fixes bug
+            controller.set_desired(-10)
+        else:
+            # gives car more frames/time when turning a tight curve. Could result in negative speeds in theory but not with set_speed = 10
+            controller.set_desired(set_speed - (abs(steering_angle) * 6.0))
 
         throttle = controller.update(float(speed))
 
-        print(steering_angle, throttle)
+        print(steering_angle, throttle, float(speed))
         send_control(steering_angle, throttle)
 
         # save frame
