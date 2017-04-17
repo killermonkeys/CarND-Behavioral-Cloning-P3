@@ -3,13 +3,20 @@ import cv2
 import numpy as np 
 import random
 
-#hyperparameters
+#
+#training parameters
+#
+
+#amount to adjust steering values for side cameras
 sidecamcorrection = 0.18
+#epochs to train
 epochs = 10
+#batch size, given size of training, goal is to maximize memory usage
 batch_size = 128
+#proportion of set to use for validation
 test_size = 0.2
 
-#data path info
+#data paths: tuples of (location_of_driving_log.csv, location_of_images)
 data_paths = [('track1-data/', 'track1-data/IMG/'),('track2-data/','track2-data/IMG/'),
               ('data-track1-2017-04-13-02/','data-track1-2017-04-13-02/IMG/'),
               ('data-track2-2017-04-13-03/', 'data-track2-2017-04-13-03/IMG/'),
@@ -21,6 +28,8 @@ data_paths = [('track1-data/', 'track1-data/IMG/'),('track2-data/','track2-data/
               #('data-track2-2017-04-15-01/', 'data-track2-2017-04-15-01/IMG/'),
               ('data-track1-2017-04-15-01/', 'data-track1-2017-04-15-01/IMG/')]
 
+#create a list of all images and outputs, using sidecamcorrection for side images, also create a "reverse" to flip each image
+#this is fed into the input generator
 driving_log =[]
 for (data_path, img_path) in data_paths:
     with open(data_path + 'driving_log.csv') as csvfile:
@@ -30,17 +39,15 @@ for (data_path, img_path) in data_paths:
             center_file = img_path + line[0].split('/')[-1]
             left_file = img_path + line[1].split('/')[-1]
             right_file = img_path + line[2].split('/')[-1]
-            #if random.choice([True, False]):
             driving_log.append([[center_file, 'normal'], measurement])
             driving_log.append([[left_file, 'normal'], measurement + sidecamcorrection])
             driving_log.append([[right_file, 'normal'], measurement - sidecamcorrection])
-            #else:
             driving_log.append([[center_file, 'reverse'], -measurement])
             driving_log.append([[left_file, 'reverse'], -1 * (measurement + sidecamcorrection)])
             driving_log.append([[right_file, 'reverse'], -1 * (measurement - sidecamcorrection)])
         
 
-
+# split into training and validation
 from sklearn.model_selection import train_test_split
 train_samples, validation_samples = train_test_split(driving_log, test_size=test_size)
 
@@ -49,15 +56,7 @@ import numpy as np
 import sklearn
 from sklearn.utils import shuffle
 
-def normalizedHsv(img):
-    hsv_img = cv2.cvtColor(img, cv2.COLOR_BGR2HSV).astype(float)
-    #H is 0 - 180
-    #hsv_img[0] = hsv_img[0] /180.0 - 0.5
-    # rest are 0-255
-    #hsv_img[1] = hsv_img[1] / 255.0 - 0.5
-    #hsv_img[2] = hsv_img[2] / 255.0 - 0.5
-    return hsv_img
-
+# basic input generator
 def generator(samples, batch_size=32):
     num_samples = len(samples)
     while 1: # Loop forever so the generator never terminates
@@ -82,6 +81,7 @@ def generator(samples, batch_size=32):
                 #hsvimg = normalizedHsv(image)
                 #print("i 0- ", image[0].min(), "0+ ", image[0].max(), "1- ", image[1].min(), "1+ ", image[1].max(), "2- ", image[2].min(), "2+ ", image[2].max())
                 #print("h 0- ", hsvimg[0].min(), "0+ ", hsvimg[0].max(), "1- ", hsvimg[1].min(), "1+ ", hsvimg[1].max(), "2- ", hsvimg[2].min(), "2+ ", hsvimg[2].max())
+                
                 images.append(image)
 
                 measurement = float(batch_sample[1])
@@ -108,11 +108,17 @@ model = Sequential()
 from keras import backend as K
 K.set_image_dim_ordering('tf')
 
+# normalize images
 model.add(Lambda(lambda x: x/255.0 - 0.5, input_shape=(160,320,3)))
+
+# crop horizon, I used a bottom 15 crop vs. the suggested 25 crop to improve performance in tight corners in track 2
 model.add(Cropping2D(cropping=((70,15),(0,0))))
+
+#model convolutions are based on nvidia paper
 model.add(Conv2D(24, (5, 5), strides=(2, 2),  activation='relu', padding='same'))
 model.add(Conv2D(36, (5, 5), strides=(2, 2),  activation='relu', padding='same'))
 model.add(Conv2D(48, (5, 5), strides=(2, 2),  activation='relu', padding='same'))
+#added in dropout to limit overtraining. Note that with 50% dropout, the model performed significantly worse in 10 epochs
 model.add(Dropout(0.25))
 
 model.add(Conv2D(64, (3, 3), activation='relu', padding='same'))
@@ -127,16 +133,17 @@ model.add(Dense(50, activation='relu'))
 model.add(Dense(10, activation='relu'))
 model.add(Dense(1))
 
-# checkpoint
+# checkpoints, these made it easier to "set and forget", then could test different epochs' models with different validation losses
 filepath="weights-{epoch:02d}-{val_loss:.4f}.h5"
 checkpoint = ModelCheckpoint(filepath, monitor='val_loss', verbose=1, mode='min')
 callbacks_list = [checkpoint]
 
+# used adam because lazy
 model.compile(loss='mse', optimizer='adam')
 model.fit_generator(train_generator, steps_per_epoch= 
             len(train_samples)/batch_size, validation_data=validation_generator, 
             validation_steps=len(validation_samples)/batch_size, epochs=epochs,
             callbacks=callbacks_list)
-
+# I rarely used the final model, because it was overtrained
 model.save('model.h5')
 
